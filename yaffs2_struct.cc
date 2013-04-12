@@ -1,9 +1,27 @@
+// yaffs2-recovery :
+//   implementation of historical data recovery on YAFFS2 filesytem
+//
+// Copyright (C) Zu Zhiyue <zuzhiyue@gmail.com>
+//
+// This file is part of yaffs2-recovery.
+//
+//    yaffs2-recovery is free software: you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation, either version 3 of the License, or
+//    (at your option) any later version.
+//
+//    yaffs2-recovery is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with yaffs2-recovery.  If not, see <http://www.gnu.org/licenses/>.
 #include <assert.h>
 #include <string.h>
 #include <time.h>
-#include <iostream>
 #include <stack>
-#include "yaffs2_struct.h"
+#include "./yaffs2_struct.h"
 
 SuperBlock::SuperBlock() {
   fp_ = NULL;
@@ -23,7 +41,7 @@ int SuperBlock::Build(FILE *fp) {
   fp_ = fp;
   rewind(fp_);
 
-  long offset = ftell(fp_);
+  off_t offset = ftello(fp_);
   unsigned block_id = 0;
   unsigned obj_id = 0;
 
@@ -45,7 +63,7 @@ int SuperBlock::Build(FILE *fp) {
           break;
       }
     }
-    offset = ftell(fp_);
+    offset = ftello(fp_);
   }
   return YAFFS2_OK;
 }
@@ -68,18 +86,19 @@ int SuperBlock::Recover(void) {
       for (offv = block->second.rbegin();
           offv != block->second.rend() && !(dataChunkMap_.empty());
           offv++) {
-        fseek(fp_, *offv, SEEK_SET);
+        fseeko(fp_, *offv, SEEK_SET);
         fread(buf_, sizeof(uint8_t), SIZE_UNIT, fp_);
         file_size = convert(OFF_SIZE, LEN_SIZE);
 
         if (file_size > 0) {
           n_chunks = file_size / SIZE_CHUNK + (file_size % SIZE_CHUNK != 0);
           setFilename(name);
+          data_chk = dataChunkMap_.find(obj_hdr->first);
 
-          if ((data_chk = dataChunkMap_.find(obj_hdr->first)) != dataChunkMap_.end()) {
+          if (data_chk != dataChunkMap_.end()) {
             printf("%s\n%d chunks objid=%d\n", name, n_chunks, obj_hdr->first);
             if (data_chk->second.size() > 0) {
-              recover(name, n_chunks, data_chk->second);
+              recover(name, n_chunks, &(data_chk->second));
             }
           }
         }
@@ -89,17 +108,17 @@ int SuperBlock::Recover(void) {
   return YAFFS2_OK;
 }
 
-int SuperBlock::recover(char *name, unsigned n_chunks, BlockMap &data_blk) {
+int SuperBlock::recover(char *name, unsigned n_chunks, BlockMap *data_blk) {
   assert(n_chunks > 0);
   FILE *fout = fopen(name, "w");
-  std::stack<long> data_stack;
+  std::stack<off_t> data_stack;
 
   if (fout) {
     BlockMap::reverse_iterator block;
     OffsetVector::reverse_iterator offv;
 
-    for (block = data_blk.rbegin();
-        block != data_blk.rend() && n_chunks > 0;
+    for (block = data_blk->rbegin();
+        block != data_blk->rend() && n_chunks > 0;
         block++) {
       for (offv = block->second.rbegin();
           offv != block->second.rend() && n_chunks > 0;
@@ -112,10 +131,10 @@ int SuperBlock::recover(char *name, unsigned n_chunks, BlockMap &data_blk) {
     if (block->second.empty()) {
       block++;
     }
-    data_blk.erase(block.base(), data_blk.end());
+    data_blk->erase(block.base(), data_blk->end());
 
     while (!(data_stack.empty())) {
-        fseek(fp_, data_stack.top(), SEEK_SET);
+        fseeko(fp_, data_stack.top(), SEEK_SET);
         fread(buf_, sizeof(uint8_t), SIZE_UNIT, fp_);
         fwrite(buf_, sizeof(uint8_t), convert(OFF_SIZE, LEN_SIZE), fout);
         data_stack.pop();
@@ -130,7 +149,7 @@ int SuperBlock::recover(char *name, unsigned n_chunks, BlockMap &data_blk) {
   }
 }
 
-unsigned SuperBlock::convert(long begin, unsigned nbytes) const {
+unsigned SuperBlock::convert(unsigned begin, unsigned nbytes) const {
   unsigned ret = (unsigned)(buf_[begin]);
   unsigned mul = 0;
 
@@ -142,28 +161,29 @@ unsigned SuperBlock::convert(long begin, unsigned nbytes) const {
   return ret;
 }
 
-bool SuperBlock::isUnlinked(void) const {
-  return (!strncmp(UNLINKED, (char*)(buf_ + OFF_NAME), LEN_NAME));
+int SuperBlock::isUnlinked(void) const {
+  return (!memcmp(UNLINKED, (buf_ + OFF_NAME), LEN_NAME * sizeof(uint8_t)));
 }
 
-bool SuperBlock::isDeleted(void) const {
-  return (!strncmp(DELETED, (char*)(buf_ + OFF_NAME), LEN_NAME));
+int SuperBlock::isDeleted(void) const {
+  return (!memcmp(DELETED, (buf_ + OFF_NAME), LEN_NAME * sizeof(uint8_t)));
 }
 
 void SuperBlock::setFilename(char *name) {
-  strncpy(name, (char*)buf_ + OFF_NAME, LEN_NAME);
+  memcpy(name, buf_ + OFF_NAME, LEN_NAME * sizeof(uint8_t));
 
   time_t the_time = (time_t)convert(OFF_MTIME, LEN_MTIME);
-  struct tm* tm_ptr = localtime(&the_time);
+  struct tm tm_st;
 
-  sprintf(name, 
+  localtime_r(&the_time, &tm_st);
+
+  snprintf(name, LEN_NAME + 30,
       "%s [%d-%d-%d-%02d-%02d-%02d]",
       name,
-      tm_ptr->tm_year + 1900,
-      tm_ptr->tm_mon + 1,
-      tm_ptr->tm_mday,
-      tm_ptr->tm_hour,
-      tm_ptr->tm_min,
-      tm_ptr->tm_sec);
-  return ;
+      tm_st.tm_year + 1900,
+      tm_st.tm_mon + 1,
+      tm_st.tm_mday,
+      tm_st.tm_hour,
+      tm_st.tm_min,
+      tm_st.tm_sec);
 }

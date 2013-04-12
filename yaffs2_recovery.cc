@@ -1,11 +1,30 @@
+// yaffs2-recovery :
+//   implementation of historical data recovery on YAFFS2
+//
+// Copyright (C) Zu Zhiyue <zuzhiyue@gmail.com>
+//
+// This file is part of yaffs2-recovery.
+//
+//    yaffs2-recovery is free software: you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation, either version 3 of the License, or
+//    (at your option) any later version.
+//
+//    yaffs2-recovery is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with yaffs2-recovery.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include <unistd.h>
 
-#include "yaffs2_struct.h"
+#include "./yaffs2_struct.h"
 
 int yaffs2_recovery(char *img, char *dst) {
   FILE *fp = fopen(img, "r");
-  int yaffs2_status;
+  int ret;
 
   if (fp) {
     static char curr_name[FILENAME_MAX];
@@ -13,30 +32,29 @@ int yaffs2_recovery(char *img, char *dst) {
 
     if (chdir(dst) == -1) {
       perror(dst);
-      yaffs2_status = YAFFS2_FAILURE;
+      ret = YAFFS2_FAILURE;
 
     } else {
       SuperBlock sb;
 
-      if (sb.Build(fp) == YAFFS2_OK ) {
-        yaffs2_status = (sb.Recover() == YAFFS2_OK ? YAFFS2_OK : YAFFS2_FAILURE);
+      if (sb.Build(fp) == YAFFS2_OK) {
+        ret = (sb.Recover() == YAFFS2_OK ? YAFFS2_OK : YAFFS2_FAILURE);
         chdir(curr_name);
       } else {
-        yaffs2_status = YAFFS2_FAILURE;
+        ret = YAFFS2_FAILURE;
       }
     }
     fclose(fp);
 
   } else {
     perror(img);
-    yaffs2_status = YAFFS2_FAILURE;
+    ret = YAFFS2_FAILURE;
   }
 
-  return yaffs2_status;
+  return ret;
 }
 
-void usage(void)
-{
+void usage(void) {
   printf("yaffs2-recovery [-f <file>] [-d <dest>] [-h]\n"
       "  -f <file>   Recover from img <file>\n"
       "  -d <dest>   Write recovered files to <dest> directory\n"
@@ -44,8 +62,7 @@ void usage(void)
 }
 
 
-int main(int argc, char * argv[])
-{
+int main(int argc, char * argv[]) {
   int opt;
   int status = 1;
   char *img_path = NULL;
@@ -77,7 +94,9 @@ int main(int argc, char * argv[])
         break;
     }
   }
-  if (status == 1) {
+  if (status == 1
+      && img_path != NULL
+      && dst_path != NULL) {
     yaffs2_recovery(img_path, dst_path);
   } else {
     usage();

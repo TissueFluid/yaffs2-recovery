@@ -1,12 +1,33 @@
+// yaffs2-recovery :
+//   implementation of historical data recovery on YAFFS2
+//
+// Copyright (C) Zu Zhiyue <zuzhiyue@gmail.com>
+//
+// This file is part of yaffs2-recovery.
+//
+//    yaffs2-recovery is free software: you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation, either version 3 of the License, or
+//    (at your option) any later version.
+//
+//    yaffs2-recovery is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with yaffs2-recovery.  If not, see <http://www.gnu.org/licenses/>.
 #ifndef YAFFS2_STRUCT_H_
 #define YAFFS2_STRUCT_H_
 
 #include <inttypes.h>
+#include <stdio.h>
+#include <sys/types.h>
 #include <vector>
 #include <map>
 #include <set>
 
-typedef std::vector<long> OffsetVector;
+typedef std::vector<off_t> OffsetVector;
 typedef std::map<unsigned, OffsetVector> BlockMap;
 typedef std::map<unsigned, BlockMap> ObjHeaderMap;
 typedef std::map<unsigned, BlockMap> DataChunkMap;
@@ -48,8 +69,12 @@ const uint8_t TYPE_DIR      = 0x30;
 const uint8_t TYPE_HARDLINK = 0x40;
 const uint8_t TYPE_SPECIAL  = 0x50;
 
-const char UNLINKED[] = "unlinked";
-const char DELETED[] = "deleted";
+const uint8_t UNLINKED[] = {
+  'u', 'n', 'l', 'i', 'n', 'k', 'e', 'd'
+};
+const char DELETED[] = {
+  'd', 'e', 'l', 'e', 't', 'e', 'd'
+};
 
 
 class SuperBlock {
@@ -64,15 +89,15 @@ class SuperBlock {
     ObjHeaderMap objHeaderMap_;
     DataChunkMap dataChunkMap_;
 
-    unsigned convert(long begin, unsigned nbytes) const;
-    bool isUnlinked(void) const;
-    bool isDeleted(void) const;
+    unsigned convert(unsigned begin, unsigned nbytes) const;
+    int isUnlinked(void) const;
+    int isDeleted(void) const;
     void setFilename(char *name);
-    int recover(char *name, unsigned n_chunks, BlockMap & data_blk);
+    int recover(char *name, unsigned n_chunks, BlockMap *data_blk);
 
   private:
     uint8_t buf_[SIZE_UNIT];
     FILE *fp_;
 };
 
-#endif
+#endif  // YAFFS2_STRUCT_H_
