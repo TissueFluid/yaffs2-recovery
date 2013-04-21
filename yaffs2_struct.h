@@ -72,7 +72,7 @@ const uint8_t TYPE_SPECIAL  = 0x50;
 const uint8_t UNLINKED[] = {
   'u', 'n', 'l', 'i', 'n', 'k', 'e', 'd'
 };
-const char DELETED[] = {
+const uint8_t DELETED[] = {
   'd', 'e', 'l', 'e', 't', 'e', 'd'
 };
 

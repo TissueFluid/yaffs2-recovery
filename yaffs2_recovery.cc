@@ -81,7 +81,6 @@ int main(int argc, char * argv[]) {
         dst_path = optarg;
         break;
       case 'h':
-        usage();
         status = 0;
         break;
       case ':':
