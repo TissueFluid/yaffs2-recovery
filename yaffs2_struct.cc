@@ -45,14 +45,17 @@ int SuperBlock::Build(FILE *fp) {
   unsigned block_id = 0;
   unsigned obj_id = 0;
 
+  // read a chunk and oob each time
   while (fread(buf_, sizeof(uint8_t), SIZE_UNIT, fp) == SIZE_UNIT) {
     block_id = convert(OFF_BLK_ID, LEN_BLK_ID);
 
+    // skip erased and bad blocks
     if (block_id != 0 && block_id != 0xffffffff) {
       obj_id = convert(OFF_OBJ_ID, LEN_OBJ_ID);
 
       switch (buf_[OFF_OBJ_TYPE]) {
         case TYPE_HEADER:
+          // skip unlinked and deleted chunk
           if (!isUnlinked() && !isDeleted()) {
             objHeaderMap_[obj_id][block_id].push_back(offset);
           }
@@ -77,6 +80,11 @@ int SuperBlock::Recover(void) {
   unsigned n_chunks;
   static char name[LEN_NAME + 30];
 
+  // The STL automaticly sort $obj_hdr and $data_chk by object id, block id in
+  // ascending order, which means that the most recent chunks are at the end
+  // of $obj_hdr and $data_chk. As a result, I traverse from the end of
+  // $obj_hdr to get a file's orignal name, mtime and filesize. And then I can
+  // obtain corresponding number of data chunks according to the filesize.
   for (obj_hdr = objHeaderMap_.rbegin();
       obj_hdr != objHeaderMap_.rend();
       obj_hdr++) {
@@ -86,6 +94,8 @@ int SuperBlock::Recover(void) {
       for (offv = block->second.rbegin();
           offv != block->second.rend() && !(dataChunkMap_.empty());
           offv++) {
+        // copy the chunk+oob of the object header currently being traversed
+        // to buffer and obtain its filesize
         fseeko(fp_, *offv, SEEK_SET);
         fread(buf_, sizeof(uint8_t), SIZE_UNIT, fp_);
         file_size = convert(OFF_SIZE, LEN_SIZE);
@@ -93,11 +103,15 @@ int SuperBlock::Recover(void) {
         if (file_size > 0) {
           n_chunks = file_size / SIZE_CHUNK + (file_size % SIZE_CHUNK != 0);
           setFilename(name);
+          // obtain the corresponding data chunks
           data_chk = dataChunkMap_.find(obj_hdr->first);
 
+          // if not found
           if (data_chk != dataChunkMap_.end()) {
+            // debug information
             printf("%s\n%d chunks objid=%d\n", name, n_chunks, obj_hdr->first);
             if (data_chk->second.size() > 0) {
+              // A file that has no data chunk is skipped
               recover(name, n_chunks, &(data_chk->second));
             }
           }
@@ -125,14 +139,17 @@ int SuperBlock::recover(char *name, unsigned n_chunks, BlockMap *data_blk) {
           offv++, n_chunks--) {
         data_stack.push(*offv);
       }
+      // erase the chunks' offset that have been used to recover
       block->second.erase(offv.base(), block->second.end());
     }
 
     if (block->second.empty()) {
       block++;
     }
+    // erase the blocks that all chunks have been used (contains nothing)
     data_blk->erase(block.base(), data_blk->end());
 
+    // skip files that have on content
     while (!(data_stack.empty())) {
         fseeko(fp_, data_stack.top(), SEEK_SET);
         fread(buf_, sizeof(uint8_t), SIZE_UNIT, fp_);
@@ -154,6 +171,7 @@ unsigned SuperBlock::convert(unsigned begin, unsigned nbytes) const {
   unsigned mul = 0;
 
   assert(nbytes > 0);
+  // turn little endian to unsigned value
   while (--nbytes) {
     mul += 8u;
     ret |= ((unsigned)(buf_[++begin]) << mul);
@@ -170,6 +188,7 @@ int SuperBlock::isDeleted(void) const {
 }
 
 void SuperBlock::setFilename(char *name) {
+  // copies the file's orignal name to buffer
   memcpy(name, buf_ + OFF_NAME, LEN_NAME * sizeof(uint8_t));
 
   time_t the_time = (time_t)convert(OFF_MTIME, LEN_MTIME);
@@ -177,6 +196,7 @@ void SuperBlock::setFilename(char *name) {
 
   localtime_r(&the_time, &tm_st);
 
+  // rename the filename with its orignal name and the file's mtime
   snprintf(name, LEN_NAME + 30,
       "%s [%d-%d-%d-%02d-%02d-%02d]",
       name,

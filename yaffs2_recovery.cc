@@ -22,49 +22,20 @@
 
 #include "./yaffs2_struct.h"
 
-int yaffs2_recovery(char *img, char *dst) {
-  FILE *fp = fopen(img, "r");
-  int ret;
+// Brief: do the recovering job
+// Parameter:
+//    img: path to the yaffs2 image
+//    dst: where to put the generated files
+//  Returns YAFFS2_OK on success
+int yaffs2_recovery(char *img, char *dst);
 
-  if (fp) {
-    static char curr_name[FILENAME_MAX];
-    getcwd(curr_name, FILENAME_MAX);
-
-    if (chdir(dst) == -1) {
-      perror(dst);
-      ret = YAFFS2_FAILURE;
-
-    } else {
-      SuperBlock sb;
-
-      if (sb.Build(fp) == YAFFS2_OK) {
-        ret = (sb.Recover() == YAFFS2_OK ? YAFFS2_OK : YAFFS2_FAILURE);
-        chdir(curr_name);
-      } else {
-        ret = YAFFS2_FAILURE;
-      }
-    }
-    fclose(fp);
-
-  } else {
-    perror(img);
-    ret = YAFFS2_FAILURE;
-  }
-
-  return ret;
-}
-
-void usage(void) {
-  printf("yaffs2-recovery [-f <file>] [-d <dest>] [-h]\n"
-      "  -f <file>   Recover from img <file>\n"
-      "  -d <dest>   Write recovered files to <dest> directory\n"
-      "  -h          Print help\n");
-}
+// Brief: print usage
+void usage(void);
 
 
 int main(int argc, char * argv[]) {
   int opt;
-  int status = 1;
+  int status = 1; // whether the arguments meet my requests
   char *img_path = NULL;
   char *dst_path = NULL;
 
@@ -101,4 +72,44 @@ int main(int argc, char * argv[]) {
     usage();
   }
   return 0;
+}
+
+int yaffs2_recovery(char *img, char *dst) {
+  FILE *fp = fopen(img, "r");
+  int ret;
+
+  if (fp) {
+    // backup previous working directory
+    static char curr_name[FILENAME_MAX];
+    getcwd(curr_name, FILENAME_MAX);
+
+    if (chdir(dst) == -1) {
+      perror(dst);
+      ret = YAFFS2_FAILURE;
+
+    } else {
+      SuperBlock sb;
+
+      if (sb.Build(fp) == YAFFS2_OK) {
+        ret = (sb.Recover() == YAFFS2_OK ? YAFFS2_OK : YAFFS2_FAILURE);
+        chdir(curr_name);
+      } else {
+        ret = YAFFS2_FAILURE;
+      }
+    }
+    fclose(fp);
+
+  } else {
+    perror(img);
+    ret = YAFFS2_FAILURE;
+  }
+
+  return ret;
+}
+
+void usage(void) {
+  printf("yaffs2-recovery [-f <file>] [-d <dest>] [-h]\n"
+      "  -f <file>   Recover from img <file>\n"
+      "  -d <dest>   Write recovered files to <dest> directory\n"
+      "  -h          Print help\n");
 }
